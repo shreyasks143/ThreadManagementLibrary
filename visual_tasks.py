@@ -1,16 +1,13 @@
 # visual_tasks.py
 """
 Fully Integrated Task Visualizer
---------------------------------
-Features:
- - ThreadPool task execution
- - CPU-bound / IO-bound / Mixed tasks
- - Fully working Green Progressbars (striped + glow)
- - Task cancellation
- - Dark/Light mode
- - System Metrics panel (integrated with monitoring.py)
- - Heartbeat indicator
- - Random task generator
+- ThreadPool execution
+- CPU / IO / Mixed tasks
+- Green striped progress bars + glow effect
+- Final progress update guaranteed (100% filled)
+- System metrics integration
+- Task cancellation
+- Light / Dark mode
 """
 
 import tkinter as tk
@@ -29,21 +26,22 @@ except:
 class TaskVisualizer:
     def __init__(self, pool: ThreadPool):
         self.pool = pool
-        self.monitor = Monitor(self.pool)
-
+        self.monitor = Monitor(pool)
         self.task_counter = 0
         self.cancel_flags = {}
 
-        # ---------------- ROOT WINDOW ----------------
+        # ---------------- WINDOW ----------------
         self.root = tk.Tk()
         self.root.title("ThreadPool Task Manager")
         self.root.geometry("1150x780")
-        self.root.minsize(1100, 650)
 
+        # Theme
+        self.base_font = ("Segoe UI", 10)
+        self.root.option_add("*Font", self.base_font)
         self.style = ttk.Style(self.root)
         self._current_theme = "light"
         self.configure_theme()
-        self.configure_progressbar_styles()  # << FIXED HERE
+        self.configure_progressbar_styles()
 
         # ---------------- HEADER ----------------
         top_bar = tk.Frame(self.root, bg=self.bg_main)
@@ -51,92 +49,101 @@ class TaskVisualizer:
 
         tk.Label(
             top_bar, text="⚙️ ThreadPool Task Manager",
-            font=("Segoe UI Semibold", 18),
-            bg=self.bg_main, fg=self.fg_main
+            bg=self.bg_main, fg=self.fg_main,
+            font=("Segoe UI Semibold", 18)
         ).pack(side=tk.LEFT, padx=20, pady=10)
 
+        # Dark mode
         self.dark_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(top_bar, text="Dark Mode",
-                        variable=self.dark_var, command=self.toggle_theme).pack(side=tk.RIGHT, padx=20)
+        ttk.Checkbutton(
+            top_bar,
+            text="Dark Mode",
+            variable=self.dark_var,
+            command=self.toggle_theme
+        ).pack(side=tk.RIGHT, padx=20)
 
         # Heartbeat
-        self.pulse_lbl = tk.Label(top_bar, text="●", fg="#2ecc71",
-                                  bg=self.bg_main, font=("Segoe UI", 18))
+        self.pulse_lbl = tk.Label(
+            top_bar, text="●", fg="#2ecc71",
+            bg=self.bg_main, font=("Segoe UI", 18)
+        )
         self.pulse_lbl.pack(side=tk.RIGHT, padx=10)
         self.pulse_state = True
 
-        # ---------------- LAYOUT SPLIT ----------------
-        main = tk.Frame(self.root, bg=self.bg_main)
-        main.pack(fill=tk.BOTH, expand=True)
+        # ---------------- MAIN SPLIT ----------------
+        main_frame = tk.Frame(self.root, bg=self.bg_main)
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-        left = tk.Frame(main, bg=self.bg_main)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        left_frame = tk.Frame(main_frame, bg=self.bg_main)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        right = tk.Frame(main, bg=self.bg_main)
-        right.pack(side=tk.RIGHT, fill=tk.Y)
+        right_frame = tk.Frame(main_frame, bg=self.bg_main)
+        right_frame.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # ---------------- TASK CREATION FORM ----------------
-        form = ttk.LabelFrame(left, text="Create New Task")
-        form.pack(fill=tk.X, padx=10, pady=10)
+        # ---------------- FORM ----------------
+        form_frame = ttk.LabelFrame(left_frame, text="Create New Task")
+        form_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        ttk.Label(form, text="Name:").grid(row=0, column=0, padx=8, pady=5)
-        self.name_entry = ttk.Entry(form, width=18)
+        ttk.Label(form_frame, text="Name:").grid(row=0, column=0, padx=8, pady=5)
+        self.name_entry = ttk.Entry(form_frame, width=18)
         self.name_entry.grid(row=0, column=1)
 
-        ttk.Label(form, text="Duration (s):").grid(row=0, column=2, padx=8)
-        self.duration_spin = ttk.Spinbox(form, from_=1, to=15, width=6)
+        ttk.Label(form_frame, text="Duration (s):").grid(row=0, column=2, padx=8)
+        self.duration_spin = ttk.Spinbox(form_frame, from_=1, to=15, width=6)
         self.duration_spin.set(5)
         self.duration_spin.grid(row=0, column=3)
 
-        ttk.Label(form, text="Type:").grid(row=1, column=0)
+        ttk.Label(form_frame, text="Type:").grid(row=1, column=0)
         self.task_type = tk.StringVar(value="CPU-bound")
         ttk.Combobox(
-            form, textvariable=self.task_type,
+            form_frame, textvariable=self.task_type,
             values=["CPU-bound", "IO-bound", "Mixed"],
-            state="readonly", width=14
+            width=14, state="readonly"
         ).grid(row=1, column=1)
 
-        ttk.Label(form, text="Priority:").grid(row=1, column=2)
+        ttk.Label(form_frame, text="Priority:").grid(row=1, column=2)
         self.priority = tk.StringVar(value="Medium")
 
-        prio_frame = tk.Frame(form, bg=self.bg_main)
+        prio_frame = tk.Frame(form_frame, bg=self.bg_main)
         prio_frame.grid(row=1, column=3)
-
         for p in ["Low", "Medium", "High"]:
             ttk.Radiobutton(prio_frame, text=p, value=p,
                             variable=self.priority).pack(side=tk.LEFT)
 
         self.critical_flag = tk.BooleanVar()
-        ttk.Checkbutton(form, text="⚡ Critical",
+        ttk.Checkbutton(form_frame, text="⚡ Critical",
                         variable=self.critical_flag).grid(row=0, column=4)
 
-        ttk.Button(form, text="➕ Add Task",
-                   command=self.add_manual_task).grid(row=1, column=4)
-
-        ttk.Button(form, text="🚫 Cancel Selected",
-                   command=self.cancel_selected_task).grid(row=2, column=4, pady=5)
+        ttk.Button(form_frame, text="➕ Add Task",
+                   command=self.add_manual_task).grid(row=1, column=4, padx=5)
+        ttk.Button(form_frame, text="🚫 Cancel Selected",
+                   command=self.cancel_selected_task).grid(row=2, column=4, padx=5, pady=5)
 
         # ---------------- QUICK ACTIONS ----------------
-        quick = ttk.LabelFrame(left, text="Quick Actions")
-        quick.pack(fill=tk.X, padx=10)
+        quick_frame = ttk.LabelFrame(left_frame, text="Quick Actions")
+        quick_frame.pack(fill=tk.X, padx=10)
 
-        ttk.Button(quick, text="🎲 Generate Random Tasks",
-                   command=self.add_random_tasks).pack(side=tk.LEFT, padx=10, pady=8)
+        ttk.Button(
+            quick_frame, text="🎲 Generate Random Tasks",
+            command=self.add_random_tasks
+        ).pack(side=tk.LEFT, padx=10, pady=8)
 
-        ttk.Button(quick, text="🧹 Clear Logs",
-                   command=lambda: self.log_box.delete("1.0", tk.END)).pack(side=tk.LEFT, padx=10)
+        ttk.Button(
+            quick_frame, text="🧹 Clear Logs",
+            command=lambda: self.log_box.delete("1.0", tk.END)
+        ).pack(side=tk.LEFT, padx=10)
 
         # ---------------- TASK TABLE ----------------
-        table = ttk.LabelFrame(left, text="Task Status")
-        table.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        table_frame = ttk.LabelFrame(left_frame, text="Task Status")
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         columns = ("task", "status", "type", "priority", "progress")
-        self.tree = ttk.Treeview(table, columns=columns, show="headings", height=14)
+        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=14)
 
         for col in columns:
             self.tree.heading(col, text=col.capitalize())
 
-        self.tree.column("task", width=140)
+        self.tree.column("task", width=130)
         self.tree.column("status", width=140)
         self.tree.column("type", width=130)
         self.tree.column("priority", width=100)
@@ -147,36 +154,33 @@ class TaskVisualizer:
         self.rows = {}
         self.progress_bars = {}
 
-        # ---------------- LOG AREA ----------------
-        logframe = ttk.LabelFrame(left, text="Logs")
-        logframe.pack(fill=tk.X, padx=10)
-
-        self.log_box = tk.Text(logframe, height=6)
+        # ---------------- LOGS ----------------
+        log_frame = ttk.LabelFrame(left_frame, text="Logs")
+        log_frame.pack(fill=tk.X, padx=10)
+        self.log_box = tk.Text(log_frame, height=6)
         self.log_box.pack(fill=tk.BOTH, expand=True)
 
-        # ---------------- SYSTEM METRICS ----------------
-        metrics_frame = ttk.LabelFrame(right, text="System Metrics")
+        # ---------------- METRICS PANEL ----------------
+        metrics_frame = ttk.LabelFrame(right_frame, text="System Metrics")
         metrics_frame.pack(fill=tk.Y, padx=10, pady=10)
 
         metric_keys = [
-            "tasks_submitted", "tasks_completed", "tasks_failed",
-            "queue_length", "active_workers",
-            "cpu_percent", "memory_usage_mb"
+            "tasks_submitted", "tasks_completed",
+            "tasks_failed", "queue_length",
+            "active_workers", "cpu_percent",
+            "memory_usage_mb"
         ]
-
         self.metrics_labels = {}
         for key in metric_keys:
             lbl = ttk.Label(metrics_frame, text=f"{key}: 0")
             lbl.pack(anchor="w", padx=10, pady=6)
             self.metrics_labels[key] = lbl
 
-        # UI Event Loop
+        # LOOP
         self.root.after(200, self.update_ui)
         self.root.bind("<Configure>", lambda e: self.update_positions())
 
-    # ------------------------------------------------------------
-    # THEME SYSTEM
-    # ------------------------------------------------------------
+    # ---------------- THEME ----------------
     def configure_theme(self):
         if self._current_theme == "light":
             self.bg_main = "#F2F2F2"
@@ -188,70 +192,32 @@ class TaskVisualizer:
         self.root.configure(bg=self.bg_main)
         self.style.theme_use("clam")
         self.style.configure(
-            ".", background=self.bg_main, foreground=self.fg_main,
+            ".", background=self.bg_main,
+            foreground=self.fg_main,
             fieldbackground=self.bg_main
         )
 
-    # ------------------------------------------------------------
-    # FIXED & FULLY WORKING PROGRESSBAR STYLES
-    # ------------------------------------------------------------
+    # ---------------- PROGRESSBAR STYLES ----------------
     def configure_progressbar_styles(self):
-        # BASE GREEN
-        self.style.configure(
-            "Green.Horizontal.TProgressbar",
-            troughcolor=self.bg_main,
-            background="#00cc44",
-            lightcolor="#33ff77",
-            darkcolor="#009933",
-            bordercolor=self.bg_main,
-            thickness=20,
-        )
-
-        # STRIPED GREEN (ANIMATED)
         self.style.configure(
             "Striped.Green.Horizontal.TProgressbar",
             troughcolor=self.bg_main,
             background="#00cc44",
-            lightcolor="#33ff77",
-            darkcolor="#009933",
-            bordercolor=self.bg_main,
-            thickness=20,
         )
-
-        # Proper layout ensures bar is visible
-        self.style.layout(
-            "Striped.Green.Horizontal.TProgressbar",
-            [
-                ("Horizontal.Progressbar.trough",
-                 {"children": [
-                     ("Horizontal.Progressbar.pbar",
-                      {"side": "left", "sticky": "ns"})
-                 ],
-                     "sticky": "nswe"})
-            ]
-        )
-
-        # GLOW STYLE FOR COMPLETED TASKS
         self.style.configure(
             "Glow.Horizontal.TProgressbar",
             troughcolor=self.bg_main,
-            background="#7CFCAC",
-            lightcolor="#99ffcc",
-            darkcolor="#33cc66",
-            bordercolor=self.bg_main,
-            thickness=20,
+            background="#7CFCAC"
         )
 
-    # ------------------------------------------------------------
-    # TASK CREATION
-    # ------------------------------------------------------------
+    # ---------------- CREATE TASK ----------------
     def add_manual_task(self):
         name = self.name_entry.get().strip() or f"Task-{self.task_counter + 1}"
         duration = int(self.duration_spin.get())
         ttype = self.task_type.get()
 
-        priority_map = {"Low": 1, "Medium": 2, "High": 3}
-        prio = priority_map[self.priority.get()]
+        prio_map = {"Low": 1, "Medium": 2, "High": 3}
+        prio = prio_map[self.priority.get()]
         if self.critical_flag.get():
             prio += 2
 
@@ -278,8 +244,7 @@ class TaskVisualizer:
         self.cancel_flags[tid] = False
 
         pb = ttk.Progressbar(
-            self.root,
-            maximum=100,
+            self.root, maximum=100,
             style="Striped.Green.Horizontal.TProgressbar"
         )
         self.progress_bars[tid] = pb
@@ -288,29 +253,25 @@ class TaskVisualizer:
         self.pool.submit(self.run_task, tid, duration, ttype, priority)
         self.log(f"{tid} submitted")
 
-    # ------------------------------------------------------------
-    # CANCEL TASK
-    # ------------------------------------------------------------
+    # ---------------- CANCEL TASK ----------------
     def cancel_selected_task(self):
         sel = self.tree.selection()
         if not sel:
             return
         row = sel[0]
         tid = self.tree.item(row, "values")[0]
-
         self.cancel_flags[tid] = True
         self.tree.set(row, "status", "CANCELLING")
         self.log(f"{tid} cancellation requested")
 
-    # ------------------------------------------------------------
-    # EXECUTION SIMULATION
-    # ------------------------------------------------------------
+    # ---------------- SAFE SLEEP ----------------
     def _safe_sleep(self, t):
         end = time.time() + t
         while time.time() < end:
             self.root.update_idletasks()
             time.sleep(0.01)
 
+    # ---------------- RUN TASK ----------------
     def run_task(self, tid, duration, ttype, priority):
         row = self.rows[tid]
         self.tree.set(row, "status", "RUNNING")
@@ -328,7 +289,7 @@ class TaskVisualizer:
             self.tree.set(row, "progress", f"{pct}%")
             self.place_progress_bar(tid)
 
-            # Simulation
+            # Execution simulation
             if ttype == "CPU-bound":
                 _ = sum(j*j for j in range(6000))
             elif ttype == "IO-bound":
@@ -336,16 +297,24 @@ class TaskVisualizer:
             else:  # Mixed
                 if i % 2 == 0:
                     _ = sum(j*j for j in range(3000))
-                self._safe_sleep(duration / steps / 2)
+                self._safe_sleep((duration / steps) / 2)
 
-        # Completed
-        self.progress_bars[tid].config(style="Glow.Horizontal.TProgressbar")
+        # ------ GUARANTEED FINAL 100% UPDATE ------
+        self.root.after(10, lambda tid=tid: self.finish_progress_bar(tid))
+
         self.tree.set(row, "status", "COMPLETED")
         self.log(f"{tid} finished")
 
-    # ------------------------------------------------------------
-    # PROGRESSBAR POSITIONING
-    # ------------------------------------------------------------
+    # ---------------- FINAL PROGRESS FIX ----------------
+    def finish_progress_bar(self, tid):
+        """Ensures progress bar completes fully and glows."""
+        if tid in self.progress_bars:
+            pb = self.progress_bars[tid]
+            pb["value"] = 100
+            pb.config(style="Glow.Horizontal.TProgressbar")
+            self.place_progress_bar(tid)
+
+    # ---------------- PLACE PROGRESSBAR ----------------
     def place_progress_bar(self, tid):
         row = self.rows[tid]
         bbox = self.tree.bbox(row, "progress")
@@ -354,38 +323,36 @@ class TaskVisualizer:
 
         x, y, w, h = bbox
         pb = self.progress_bars[tid]
+
         abs_x = self.tree.winfo_rootx() - self.root.winfo_rootx() + x
         abs_y = self.tree.winfo_rooty() - self.root.winfo_rooty() + y
+
         pb.place(x=abs_x, y=abs_y, width=w, height=h)
 
     def update_positions(self):
         for tid in self.progress_bars:
             self.place_progress_bar(tid)
 
-    # ------------------------------------------------------------
-    # UPDATE UI LOOP — INTEGRATES MONITORING
-    # ------------------------------------------------------------
+    # ---------------- UI UPDATE ----------------
     def update_ui(self):
+
         # Heartbeat
         self.pulse_state = not self.pulse_state
         self.pulse_lbl.config(fg="#2ecc71" if self.pulse_state else "#7f8c8d")
-
-        # System Metrics (Live)
-        metrics = self.monitor.get_metrics()
-
-        for key, lbl in self.metrics_labels.items():
-            lbl.config(text=f"{key}: {metrics.get(key, 'N/A')}")
 
         # Animate striped bars
         for pb in self.progress_bars.values():
             if pb["style"] == "Striped.Green.Horizontal.TProgressbar":
                 pb.step(1)
 
+        # Metrics
+        stats = self.monitor.get_metrics()
+        for key, lbl in self.metrics_labels.items():
+            lbl.config(text=f"{key}: {stats.get(key, 0)}")
+
         self.root.after(200, self.update_ui)
 
-    # ------------------------------------------------------------
-    # UTILITIES
-    # ------------------------------------------------------------
+    # ---------------- UTILITIES ----------------
     def log(self, msg):
         self.log_box.insert(tk.END, msg + "\n")
         self.log_box.see(tk.END)
@@ -400,9 +367,7 @@ class TaskVisualizer:
         self.root.mainloop()
 
 
-# ------------------------------------------------------------
-# ENTRY POINT
-# ------------------------------------------------------------
+# ---------------- ENTRY ----------------
 if __name__ == "__main__":
     pool = ThreadPool(max_workers=6)
     TaskVisualizer(pool).run()
